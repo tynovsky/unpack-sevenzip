@@ -42,7 +42,7 @@
       },
       "runtime" : {
          "requires" : {
-            "perl" : "5.008001"
+            "perl" : "5.16"
          }
       },
       "test" : {
@@ -52,5 +52,11 @@
       }
    },
    "release_status" : "unstable",
+   "resources" : {
+      "repository" : {
+         "type" : "git",
+         "url" : "git://git.int.avast.com/tynovsky/unpack-sevenzip.git"
+      }
+   },
    "version" : "0.01"
 }
