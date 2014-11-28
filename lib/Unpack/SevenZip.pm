@@ -32,8 +32,13 @@ sub run_7zip {
 }
 
 sub info {
-    my ($self, $filename) = @_;
-    my ($pid, $out) = $self->run_7zip('l', $filename, ['-slt']);
+    my ($self, $filename, $params) = @_;
+
+    $params //= [];
+    push @$params, '-y';
+    push @$params, '-slt';
+    push @$params, '-p' if !grep /^-p/, @$params;
+    my ($pid, $out) = $self->run_7zip('l', $filename, $params);
 
     my ($file_list_started, $info_started, @files, $file, $info);
     while (my $line = <$out>) {
@@ -72,7 +77,9 @@ sub extract {
 
     $list   //= ($self->info($filename))[0];
     $params //= [];
+    push @$params, '-y';
     push @$params, '-so';
+    push @$params, '-p' if !grep /^-p/, @$params;
 
     my ($pid, $out, $err) = $self->run_7zip('x', $filename, $params);
     return $self->process_7zip_out( $out, $err, $list, $save);
