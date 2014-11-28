@@ -26,7 +26,6 @@ sub run_7zip {
 
     my ($out, $err) = (IO::Handle->new, IO::Handle->new);
     my $cmd = "$sevenzip $command @$switches '$archive_name' @$files";
-    #print STDERR "$cmd\n";
     my $pid = open3 $stdin, $out, $err, $cmd;
 
     return ($pid, $out, $err)
@@ -63,7 +62,7 @@ sub info {
         }
     }
 
-    return (\@files, $info);
+    return (\@files, $info)
 }
 
 sub extract {
@@ -82,13 +81,12 @@ sub extract {
 sub process_7zip_out {
     my ($self, $out, $err, $list, $save_fn) = @_;
 
-    my $success = 0;
-    my $szip_out;
     my $reader = IO::Select->new($err, $out);
 
     my $file = shift @$list;
     my $contents;
     my @extracted_files;
+    my @corrupted_paths;
     while ( my @ready = $reader->can_read() ) {
         foreach my $fh (@ready) {
             if (defined fileno($out) && fileno($fh) == fileno($out)) {
@@ -120,8 +118,10 @@ sub process_7zip_out {
                     $fh->close();
                     next
                 }
-                $success = 1 if $line =~ /^Everything is Ok/;
-                $szip_out .= $line;
+                if ($line =~ /CRC Failed$/) {
+                    my ($path) = $line =~ /Extracting *(.*?) *CRC Failed$/;
+                    push @corrupted_paths, $path;
+                }
             }
         }
     }
@@ -129,12 +129,7 @@ sub process_7zip_out {
         push @extracted_files, $save_fn->($contents, $file);
     }
 
-    if (! $success ) {
-        print STDERR $szip_out;
-        die "7zip failed to extract.\n";
-    }
-
-    return \@extracted_files;
+    return \@extracted_files, \@corrupted_paths
 }
 
 1;
