@@ -7,6 +7,7 @@ use Data::Dumper;
 
 use IPC::Open3;
 use IO::Handle;
+use IO::Select;
 
 our $VERSION = "0.01";
 
