@@ -11,11 +11,10 @@ use IO::Select;
 
 our $VERSION = "0.01";
 
-my $sevenzip = '/home/tynovsky/p7zip_9.20.1/bin/7z';
-
 sub new {
     my ($class, $args) = @_;
-    $args //= {};
+    $args //= { };
+    $args->{sevenzip} //= '/usr/bin/7z';
 
     return bless $args, $class;
 }
@@ -26,7 +25,8 @@ sub run_7zip {
     $_ //= '' for $command, $archive_name;
 
     my ($out, $err) = (IO::Handle->new, IO::Handle->new);
-    my $cmd = "$sevenzip $command @$switches '$archive_name' @$files";
+    my $cmd = "$self->{sevenzip} $command @$switches '$archive_name' @$files";
+    # say STDERR $cmd;
     my $pid = open3 $stdin, $out, $err, $cmd;
 
     return ($pid, $out, $err)
@@ -72,18 +72,34 @@ sub info {
 }
 
 sub extract {
-    my ($self, $filename, $want_extract, $save, $params, $list) = @_;
-
-    return [] if ! $want_extract->($filename);
+    my ($self, $filename, $save, $params, $list, $passwords) = @_;
 
     $list   //= ($self->info($filename))[0];
     $params //= [];
-    push @$params, '-y';
-    push @$params, '-so';
-    push @$params, '-p' if !grep /^-p/, @$params;
+    my @passwords = @{ $passwords // [] };
 
-    my ($pid, $out, $err) = $self->run_7zip('x', $filename, $params);
-    return $self->process_7zip_out( $out, $err, $list, $save);
+    push @$params, '-y'  if !grep /^-y/,  @$params;
+    push @$params, '-so' if !grep /^-so/, @$params;
+    for my $pass_param ( grep /^-p/, @$params ) {
+        push @passwords, $pass_param =~ s/^-p//r;
+    }
+    # always use (at least) empty password. otherwise it hangs when the archive
+    # is password protected (waits for user input)
+    if (!grep { $_ eq '' } @passwords) {
+        push @passwords, '';
+    }
+    @$params = grep { $_ !~ /^-p/ } @$params;
+
+    while (defined(my $password = shift @passwords)) {
+        my ($pid, $out, $err) = $self->run_7zip(
+            'x', $filename, [ @$params, "-p$password" ]);
+        my ($extracted, $corrupted)
+            = $self->process_7zip_out( $out, $err, $list, $save);
+        # return if at least something succeeded or if we tried all passwords
+        if (@$extracted || !@passwords) {
+            return ($extracted, $corrupted);
+        }
+    }
 }
 
 sub process_7zip_out {
@@ -126,8 +142,8 @@ sub process_7zip_out {
                     $fh->close();
                     next
                 }
-                if ($line =~ /CRC Failed$/) {
-                    my ($path) = $line =~ /Extracting *(.*?) *CRC Failed$/;
+                # print STDERR $line;
+                if (my ($path) = $line =~ /Extracting *(.*?) *CRC Failed$/) {
                     push @corrupted_paths, $path;
                 }
             }
