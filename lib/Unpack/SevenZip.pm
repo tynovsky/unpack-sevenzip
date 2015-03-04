@@ -25,11 +25,12 @@ sub run_7zip {
     $_ //= '' for $command, $archive_name;
 
     my ($out, $err) = (IO::Handle->new, IO::Handle->new);
+    $stdin //= IO::Handle->new;
     my $cmd = "$self->{sevenzip} $command @$switches '$archive_name' @$files";
     # say STDERR $cmd;
     my $pid = open3 $stdin, $out, $err, $cmd;
 
-    return ($pid, $out, $err)
+    return ($pid, $out, $err, $stdin)
 }
 
 sub info {
@@ -39,10 +40,38 @@ sub info {
     push @$params, '-y';
     push @$params, '-slt';
     push @$params, '-p' if !grep /^-p/, @$params;
-    my ($pid, $out) = $self->run_7zip('l', $filename, $params);
+    my ($pid, $out, $err, $stdin) = $self->run_7zip('l', $filename, $params);
 
-    my ($file_list_started, $info_started, @files, $file, $info);
-    while (my $line = <$out>) {
+    my ($file_list_started, $info_started, @files, $file, $info, $prev_content);
+    my $reader = IO::Select->new($err, $out);
+    my $content;
+    while ( my @ready = $reader->can_read(1000) ) {
+        foreach my $fh (@ready) {
+            if (defined fileno($out) && defined fileno($fh) && fileno($fh) == fileno($out)) {
+                my $data;
+                my $read_bytes = $fh->sysread($data, 4096);
+                $content .= $data;
+                if ($read_bytes == 0) {
+                    $reader->remove($fh);
+                    $fh->close();
+                }
+            }
+
+            if (defined fileno($err) && defined fileno($fh) && fileno($fh) == fileno($err)) {
+                my $data;
+                my $read_bytes = $fh->sysread($data, 4096);
+                if ($read_bytes == 0) {
+                    $reader->remove($fh);
+                    $fh->close();
+                }
+            }
+        }
+    }
+
+    $stdin->close();
+    waitpid( $pid, 0 );
+
+    for my $line (split(/\n/, $content), '') {
         $file_list_started ||= $line =~ /^----------$/;
         $info_started      ||= $line =~ /^--$/;
         next if $line =~ /^-+$/;
@@ -50,6 +79,7 @@ sub info {
         if ($file_list_started) {
             if ($line =~ /^$/) { # empty lines separate the files
                 push @files, $file;
+                #print STDERR "pushed $file->{path}, size is ", scalar(@files), "\n";
                 $file = {};
                 next
             }
@@ -67,6 +97,8 @@ sub info {
             next
         }
     }
+    #print "files", Dumper \@files;
+    #print "info", Dumper $info;
 
     return (\@files, $info)
 }
@@ -91,10 +123,11 @@ sub extract {
     @$params = grep { $_ !~ /^-p/ } @$params;
 
     while (defined(my $password = shift @passwords)) {
-        my ($pid, $out, $err) = $self->run_7zip(
+        my ($pid, $out, $err, $stdin) = $self->run_7zip(
             'x', $filename, [ @$params, "-p$password" ]);
         my ($extracted, $corrupted)
-            = $self->process_7zip_out( $out, $err, $list, $save);
+            = $self->process_7zip_out( $out, $err, $stdin, $list, $save);
+        waitpid( $pid, 0 );
         # return if at least something succeeded or if we tried all passwords
         if (@$extracted || !@passwords) {
             return ($extracted, $corrupted);
@@ -103,55 +136,67 @@ sub extract {
 }
 
 sub process_7zip_out {
-    my ($self, $out, $err, $list, $save_fn) = @_;
+    my ($self, $out, $err, $stdin, $list, $save_fn) = @_;
 
     my $reader = IO::Select->new($err, $out);
 
-    my $file = shift @$list;
+    my @list = @$list;
+    #print Dumper \@list;
+    my $file = shift @list;
     my $contents;
+    my $error_content;
     my @extracted_files;
-    my @corrupted_paths;
-    while ( my @ready = $reader->can_read() ) {
+    while ( my @ready = $reader->can_read(1000) ) {
         foreach my $fh (@ready) {
-            if (defined fileno($out) && fileno($fh) == fileno($out)) {
+            if (defined fileno($out) && defined fileno($fh) && fileno($fh) == fileno($out)) {
                 use bytes;
-                my $read_anything = 0;
                 my $data;
-                while (my $read_bytes = $fh->read($data, 4096)) {
-                    $contents .= $data;
-                    if (length($contents) >= $file->{size}) {
-                        push @extracted_files, $save_fn->(
-                            substr($contents, 0, $file->{size}),
-                            $file,
-                        );
-                        $contents = substr($contents, $file->{size});
-                        $file = shift @$list;
-                    }
-                    $read_anything = 1;
+                #print STDERR "read 7z STDOUT\n";
+                my $read_bytes = $fh->sysread($data, 4096);
+                $contents .= $data;
+                #print STDERR Dumper $file;
+                if ($file && length($contents) >= $file->{size}) {
+                    push @extracted_files, $save_fn->(
+                        substr($contents, 0, $file->{size}),
+                        $file,
+                    );
+                    #print STDERR "contents length: ".length($contents)."\n";
+                    $contents = substr($contents, $file->{size});
+                    $file = shift @list;
                 }
-                if (!$read_anything) {
+                #print STDERR "done reading STDOUT\n";
+                if ($read_bytes == 0) {
                     $reader->remove($fh);
                     $fh->close();
-                    next
                 }
             }
-            elsif (defined fileno($err) && fileno($fh) == fileno($err)) {
-                my $line = <$fh>;
-                if (!defined $line) {
+            if (defined fileno($err) && defined fileno($fh) && fileno($fh) == fileno($err)) {
+                my $data;
+                my $read_bytes = $fh->sysread($data, 4096);
+                $error_content .= $data;
+                if ($read_bytes == 0) {
                     $reader->remove($fh);
                     $fh->close();
-                    next
-                }
-                # print STDERR $line;
-                if (my ($path) = $line =~ /Extracting *(.*?) *CRC Failed$/) {
-                    push @corrupted_paths, $path;
                 }
             }
         }
     }
+    $stdin->close();
     if ($contents) {
+        print Dumper $file;
         push @extracted_files, $save_fn->($contents, $file);
     }
+
+    my @corrupted_paths;
+    for my $line (split(/\n/, $error_content), "\n") {
+        if (my ($path) = $line =~ /Extracting *(.*?) *CRC Failed$/) {
+            push @corrupted_paths, $path;
+        }
+        if (my ($path) = $line =~ /Extracting *(.*?) *Data Error/) {
+            push @corrupted_paths, $path;
+        }
+    }
+
 
     return \@extracted_files, \@corrupted_paths
 }
