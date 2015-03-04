@@ -1,5 +1,5 @@
 use strict;
-use Test::More 0.98;
+use Test::More tests => 3 + 5;
 use Unpack::SevenZip;
 use Data::Dumper;
 
@@ -13,8 +13,5 @@ is($files->[20]->{path}, '7zS.sfx', '19th filepath is correct');
 
 ok(defined $info->{$_}, "info contains key $_")
     for qw(solid blocks method type path);
-
-
-done_testing;
 
 
