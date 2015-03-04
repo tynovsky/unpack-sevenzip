@@ -157,11 +157,9 @@ sub process_7zip_out {
                 #print STDERR Dumper $file;
                 if ($file && length($contents) >= $file->{size}) {
                     push @extracted_files, $save_fn->(
-                        substr($contents, 0, $file->{size}),
+                        substr($contents, 0, $file->{size}, q()),
                         $file,
                     );
-                    #print STDERR "contents length: ".length($contents)."\n";
-                    $contents = substr($contents, $file->{size});
                     $file = shift @list;
                 }
                 #print STDERR "done reading STDOUT\n";
