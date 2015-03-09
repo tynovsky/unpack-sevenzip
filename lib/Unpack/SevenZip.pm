@@ -84,7 +84,7 @@ sub info {
                 next
             }
             my ($key, $value) = $line =~ /(.*?) = (.*)/;
-            if (grep $_ eq lc($key), qw(path size)) {
+            if (grep $_ eq lc($key), qw(path size folder)) {
                 $file->{lc $key} = $value;
             }
         }
@@ -107,6 +107,7 @@ sub extract {
     my ($self, $filename, $save, $params, $list, $passwords) = @_;
 
     $list   //= ($self->info($filename))[0];
+    $list = [ grep { !exists $_->{folder} || $_->{folder} ne '+' } @$list ];
     $params //= [];
     my @passwords = @{ $passwords // [] };
 
@@ -155,7 +156,7 @@ sub process_7zip_out {
                 my $read_bytes = $fh->sysread($data, 4096);
                 $contents .= $data;
                 #print STDERR Dumper $file;
-                if ($file && length($contents) >= $file->{size}) {
+                while ($file && length($contents) >= $file->{size}) {
                     push @extracted_files, $save_fn->(
                         substr($contents, 0, $file->{size}, q()),
                         $file,
@@ -182,6 +183,7 @@ sub process_7zip_out {
     $stdin->close();
     if ($contents) {
         print Dumper $file;
+        print "Content size: ", length($contents), "\n";
         push @extracted_files, $save_fn->($contents, $file);
     }
 
@@ -193,6 +195,10 @@ sub process_7zip_out {
         if (my ($path) = $line =~ /Extracting *(.*?) *Data Error/) {
             push @corrupted_paths, $path;
         }
+    }
+
+    if (my $error_count = @list) {
+        print "ERROR: There are $error_count unsaved files: ", Dumper(\@list);
     }
 
 
