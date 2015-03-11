@@ -58,5 +58,8 @@
          "url" : "git://git.int.avast.com/tynovsky/unpack-sevenzip.git"
       }
    },
-   "version" : "0.01"
+   "version" : "0.01",
+   "x_contributors" : [
+      "tynovsky <tynovsky@seznam.cz>"
+   ]
 }
