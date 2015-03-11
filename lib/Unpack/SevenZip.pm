@@ -1,6 +1,5 @@
 package Unpack::SevenZip;
 
-use v5.16;
 use strict;
 use warnings;
 use Data::Dumper;
