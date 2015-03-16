@@ -113,7 +113,8 @@ sub extract {
     push @$params, '-y'  if !grep /^-y/,  @$params;
     push @$params, '-so' if !grep /^-so/, @$params;
     for my $pass_param ( grep /^-p/, @$params ) {
-        push @passwords, $pass_param =~ s/^-p//r;
+        (my $password = $pass_param) =~ s/^-p//;
+        push @passwords, $password;
     }
     # always use (at least) empty password. otherwise it hangs when the archive
     # is password protected (waits for user input)
