@@ -53,9 +53,14 @@
    },
    "release_status" : "unstable",
    "resources" : {
+      "bugtracker" : {
+         "web" : "https://github.com/tynovsky/unpack-sevenzip/issues"
+      },
+      "homepage" : "https://github.com/tynovsky/unpack-sevenzip",
       "repository" : {
          "type" : "git",
-         "url" : "git://git.int.avast.com/tynovsky/unpack-sevenzip.git"
+         "url" : "git://github.com/tynovsky/unpack-sevenzip.git",
+         "web" : "https://github.com/tynovsky/unpack-sevenzip"
       }
    },
    "version" : "0.01",

@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/tynovsky/unpack-sevenzip.svg?branch=master)](https://travis-ci.org/tynovsky/unpack-sevenzip)
 # NAME
 
 Unpack::SevenZip - It's new $module
