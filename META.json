@@ -1,5 +1,5 @@
 {
-   "abstract" : "It's new $module",
+   "abstract" : "p7zip wrapper",
    "author" : [
       "Týnovský Miroslav <tynovsky@avast.com>"
    ],

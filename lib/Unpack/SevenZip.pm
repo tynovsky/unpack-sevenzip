@@ -13,7 +13,11 @@ our $VERSION = "0.01";
 sub new {
     my ($class, $args) = @_;
     $args //= { };
-    $args->{sevenzip} //= '/usr/bin/7z';
+    $args->{sevenzip} //= '7z';
+
+    my $output_7z = qx($args->{sevenzip});
+    die "Program '$args->{sevenzip}' doesn't seem to be 7zip"
+        if $output_7z !~ /Igor Pavlov/ || $output_7z !~ /7-Zip/;
 
     return bless $args, $class;
 }
@@ -212,7 +216,7 @@ __END__
 
 =head1 NAME
 
-Unpack::SevenZip - It's new $module
+Unpack::SevenZip - p7zip wrapper
 
 =head1 SYNOPSIS
 
