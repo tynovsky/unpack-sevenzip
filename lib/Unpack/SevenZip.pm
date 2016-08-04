@@ -14,8 +14,8 @@ our $VERSION = "0.01";
 sub new {
     my ($class, $args) = @_;
     $args //= { };
-    $args->{sevenzip} //= 'C:\\Program Files\\7-Zip\\7z.exe';
-    #: '7z';
+    $args->{sevenzip} //= $^O eq 'MSWin32' ? 'C:\\Program Files\\7-Zip\\7z.exe'
+                                           : '7z';
 
     my $output_7z = qx($args->{sevenzip});
     die "Program '$args->{sevenzip}' doesn't seem to be 7zip"
