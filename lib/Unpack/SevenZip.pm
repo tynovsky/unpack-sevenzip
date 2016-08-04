@@ -4,16 +4,18 @@ use strict;
 use warnings;
 use Data::Dumper;
 
-use IPC::Open3;
+#use IPC::Open3;
 use IO::Handle;
 use IO::Select;
+use IPC::Run qw( start pump finish timeout binary );
 
 our $VERSION = "0.01";
 
 sub new {
     my ($class, $args) = @_;
     $args //= { };
-    $args->{sevenzip} //= '7z';
+    $args->{sevenzip} //= 'C:\\Program Files\\7-Zip\\7z.exe';
+    #: '7z';
 
     my $output_7z = qx($args->{sevenzip});
     die "Program '$args->{sevenzip}' doesn't seem to be 7zip"
@@ -27,13 +29,18 @@ sub run_7zip {
     $_ //= [] for $switches, $files;
     $_ //= '' for $command, $archive_name;
 
-    my ($out, $err) = (IO::Handle->new, IO::Handle->new);
-    $stdin //= IO::Handle->new;
-    my $cmd = "$self->{sevenzip} $command @$switches '$archive_name' @$files";
-    # say STDERR $cmd;
-    my $pid = open3 $stdin, $out, $err, $cmd;
+    my @cmd = ($command, @$switches, $archive_name, @$files);
+    # print STDERR "$cmd\n";
 
-    return ($pid, $out, $err, $stdin)
+    my ($out, $err);
+    my $h = IPC::Run::start (
+        [$self->{sevenzip}, @cmd ],
+        \$stdin,
+        '>', binary, \$out,
+        '2>', \$err
+    );
+
+    return ($h, \$out, \$err, \$stdin)
 }
 
 sub info {
@@ -43,36 +50,33 @@ sub info {
     push @$params, '-y';
     push @$params, '-slt';
     push @$params, '-p' if !grep /^-p/, @$params;
-    my ($pid, $out, $err, $stdin) = $self->run_7zip('l', $filename, $params);
+
+    my @cmd = ('l', @$params, $filename);
+
+    my ($stdin, $out, $err);
+    my $h = IPC::Run::start (
+        [$self->{sevenzip}, @cmd ],
+        \$stdin,
+        '>', \$out,
+        '2>', \$err
+    );
 
     my ($file_list_started, $info_started, @files, $file, $info, $prev_content);
-    my $reader = IO::Select->new($err, $out);
     my $content;
-    while ( my @ready = $reader->can_read(1000) ) {
-        foreach my $fh (@ready) {
-            if (defined fileno($out) && defined fileno($fh) && fileno($fh) == fileno($out)) {
-                my $data;
-                my $read_bytes = $fh->sysread($data, 4096);
-                $content .= $data;
-                if ($read_bytes == 0) {
-                    $reader->remove($fh);
-                    $fh->close();
-                }
-            }
 
-            if (defined fileno($err) && defined fileno($fh) && fileno($fh) == fileno($err)) {
-                my $data;
-                my $read_bytes = $fh->sysread($data, 4096);
-                if ($read_bytes == 0) {
-                    $reader->remove($fh);
-                    $fh->close();
-                }
-            }
+    while ($h->pump) {
+        # print STDERR "pump\n";
+        if ($out) {
+            # print STDERR "out: $$out\n";
+            $content .= $out;
+            $out = '';
+        }
+        if ($err) {
+            # print STDERR "err: $$err\n";
+            $err = '';
         }
     }
-
-    $stdin->close();
-    waitpid( $pid, 0 );
+    $h->finish;
 
     for my $line (split(/\n/, $content), '') {
         $file_list_started ||= $line =~ /^----------$/;
@@ -128,11 +132,10 @@ sub extract {
     @$params = grep { $_ !~ /^-p/ } @$params;
 
     while (defined(my $password = shift @passwords)) {
-        my ($pid, $out, $err, $stdin) = $self->run_7zip(
+        my ($h, $out, $err, $stdin) = $self->run_7zip(
             'x', $filename, [ @$params, "-p$password" ]);
         my ($extracted, $corrupted)
-            = $self->process_7zip_out( $out, $err, $stdin, $list, $save);
-        waitpid( $pid, 0 );
+            = $self->process_7zip_out($h, $out, $err, $stdin, $list, $save);
         # return if at least something succeeded or if we tried all passwords
         if (@$extracted || !@passwords) {
             return ($extracted, $corrupted);
@@ -141,50 +144,33 @@ sub extract {
 }
 
 sub process_7zip_out {
-    my ($self, $out, $err, $stdin, $list, $save_fn) = @_;
-
-    my $reader = IO::Select->new($err, $out);
+    my ($self, $h, $out, $err, $stdin, $list, $save_fn) = @_;
 
     my @list = @$list;
-    #print Dumper \@list;
     my $file = shift @list;
     my $contents;
     my $error_content;
     my @extracted_files;
-    while ( my @ready = $reader->can_read(1000) ) {
-        foreach my $fh (@ready) {
-            if (defined fileno($out) && defined fileno($fh) && fileno($fh) == fileno($out)) {
-                use bytes;
-                my $data;
-                #print STDERR "read 7z STDOUT\n";
-                my $read_bytes = $fh->sysread($data, 4096);
-                $contents .= $data;
-                #print STDERR Dumper $file;
-                while ($file && length($contents) >= $file->{size}) {
-                    push @extracted_files, $save_fn->(
-                        substr($contents, 0, $file->{size}, q()),
-                        $file,
-                    );
-                    $file = shift @list;
-                }
-                #print STDERR "done reading STDOUT\n";
-                if ($read_bytes == 0) {
-                    $reader->remove($fh);
-                    $fh->close();
-                }
+
+    while ($h->pump) {
+        if ($$out) {
+            use bytes;
+            $contents .= $$out;
+            while ($file && length($contents) >= $file->{size}) {
+                push @extracted_files, $save_fn->(
+                    substr($contents, 0, $file->{size}, q()),
+                    $file,
+                );
+                $file = shift @list;
             }
-            if (defined fileno($err) && defined fileno($fh) && fileno($fh) == fileno($err)) {
-                my $data;
-                my $read_bytes = $fh->sysread($data, 4096);
-                $error_content .= $data;
-                if ($read_bytes == 0) {
-                    $reader->remove($fh);
-                    $fh->close();
-                }
-            }
+            $$out = '';
+        }
+        if ($$err) {
+            $error_content .= $$err;
+            $$err = '';
         }
     }
-    $stdin->close();
+    $h->finish;
     if ($contents) {
         print Dumper $file;
         print "Content size: ", length($contents), "\n";
