@@ -2,6 +2,23 @@ Revision history for Perl extension Unpack-SevenZip
 
 {{$NEXT}}
 
+    - 7z is run without a shell: archive names and switches may contain
+      any characters (quotes, spaces, leading '-')
+    - array references passed to info and extract are no longer modified
+    - corrupted files are detected with 7-Zip >= 15 ("ERROR: CRC Failed : path")
+    - nothing is printed to STDOUT; unexpected output is reported by carp,
+      files which were not extracted are returned as the third value of
+      extract (and reported by carp with verbose => 1)
+    - info: no empty entries for trailing warnings/errors sections, entries
+      of unknown size (e.g. bzip2) get the rest of the output, entries
+      without a name get the archive name without extension
+    - output truncated in the middle of a file is reported as corrupted
+    - stdin of 7z is closed right away so it never waits for input
+    - the exit code of 7z is stored in last_exit_code
+    - new dies nicely when the 7z binary does not exist
+    - tests are skipped when 7z is not installed, GitHub Actions instead
+      of Travis, author e-mail changed
+
 0.01 2015-03-11T12:00:01Z
 
     - original version

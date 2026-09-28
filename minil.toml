@@ -1,4 +1,4 @@
 name = "Unpack-SevenZip"
-badges = ["travis"]
+badges = ["github-actions/test.yml"]
 module_maker="ModuleBuildTiny"
 

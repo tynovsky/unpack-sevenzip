@@ -1,7 +1,7 @@
 {
    "abstract" : "p7zip wrapper",
    "author" : [
-      "Týnovský Miroslav <tynovsky@avast.com>"
+      "TÃ½novskÃ½ Miroslav <tynovsky@seznam.cz>"
    ],
    "dynamic_config" : 0,
    "generated_by" : "Minilla/v2.3.0, CPAN::Meta::Converter version 2.143240",
@@ -42,11 +42,19 @@
       },
       "runtime" : {
          "requires" : {
-            "perl" : "5.008001"
+            "Carp" : "0",
+            "File::Basename" : "0",
+            "IO::Handle" : "0",
+            "IO::Select" : "0",
+            "IPC::Open3" : "0",
+            "perl" : "5.010"
          }
       },
       "test" : {
          "requires" : {
+            "File::Temp" : "0",
+            "IO::Compress::Bzip2" : "0",
+            "Test::Exception" : "0",
             "Test::More" : "0.98"
          }
       }
@@ -59,11 +67,11 @@
       "homepage" : "https://github.com/tynovsky/unpack-sevenzip",
       "repository" : {
          "type" : "git",
-         "url" : "git://github.com/tynovsky/unpack-sevenzip.git",
+         "url" : "https://github.com/tynovsky/unpack-sevenzip.git",
          "web" : "https://github.com/tynovsky/unpack-sevenzip"
       }
    },
-   "version" : "0.01",
+   "version" : "0.02",
    "x_contributors" : [
       "tynovsky <tynovsky@seznam.cz>"
    ]

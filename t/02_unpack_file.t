@@ -1,50 +1,23 @@
 use strict;
-use Test::More 0.98;
+use warnings;
+use Test::More;
+use lib 't/lib';
+use SevenZipTest;
 use Unpack::SevenZip;
-use IO::Select;
 
-my $unpacker = Unpack::SevenZip->new();
+my $unpacker = Unpack::SevenZip->new({ sevenzip => SevenZipTest::sevenzip() });
 
-my ($pid, $out, $err) = $unpacker->run_7zip('x', 't/archive.7z', ['-so'] );
+my ($pid, $out, $err, $stdin) = $unpacker->run_7zip('x', 't/archive.7z', ['-so', '-y']);
 ok($out, 'Got the output handle');
+$stdin->close;
 
-my $everything_ok = 0;
+my ($stdout) = Unpack::SevenZip::_read_all($out, $err);
+waitpid($pid, 0);
 
-my $reader = IO::Select->new($err, $out);
-
-while ( my @ready = $reader->can_read() ) {
-    foreach my $fh (@ready) {
-        if (fileno($fh) == fileno($out)) {
-            my $i = 0;
-            my $data;
-            while ($fh->read(\$data, 4096)) {
-                $i++;
-                #print STDERR $i, " ";
-            }
-            if (!$i) {
-                # note "close fh";
-                $reader->remove($fh);
-                $fh->close();
-                next
-            }
-        }
-        elsif (fileno($fh) == fileno($err)) {
-            my $line = <$fh>;
-            if (!defined $line) {
-                # note "close fh";
-                $reader->remove($fh);
-                $fh->close();
-                next
-            }
-            $everything_ok = 1 if $line =~ /^Everything is Ok/;
-            # note $line;
-        }
-    }
-}
-
-waitpid(0, $pid);
-
-ok($everything_ok, '7zip says: "Everything is Ok"');
-
+is($? >> 8, 0, '7zip exited successfully');
+my ($files) = $unpacker->info('t/archive.7z');
+my $size = 0;
+$size += $_->{size} for grep { ($_->{folder} // '') ne '+' } @$files;
+is(length $stdout, $size, 'all data extracted');
 
 done_testing;
