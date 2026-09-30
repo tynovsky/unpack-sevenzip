@@ -1,16 +1,16 @@
 {
-   "abstract" : "p7zip wrapper",
+   "abstract" : "list and extract archives with 7-Zip, into memory",
    "author" : [
-      "TÃ½novskÃ½ Miroslav <tynovsky@seznam.cz>"
+      "Týnovský Miroslav <tynovsky@seznam.cz>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Minilla/v2.3.0, CPAN::Meta::Converter version 2.143240",
+   "generated_by" : "Minilla/v3.1.29, CPAN::Meta::Converter version 2.150010",
    "license" : [
       "perl_5"
    ],
    "meta-spec" : {
       "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
-      "version" : "2"
+      "version" : 2
    },
    "name" : "Unpack-SevenZip",
    "no_index" : {
@@ -35,7 +35,7 @@
          "requires" : {
             "Test::CPAN::Meta" : "0",
             "Test::MinimumVersion::Fast" : "0.04",
-            "Test::PAUSE::Permissions" : "0.04",
+            "Test::PAUSE::Permissions" : "0.07",
             "Test::Pod" : "1.41",
             "Test::Spellunker" : "v0.2.7"
          }
@@ -73,6 +73,8 @@
    },
    "version" : "0.02",
    "x_contributors" : [
-      "tynovsky <tynovsky@seznam.cz>"
-   ]
+      "Claude <noreply@anthropic.com>"
+   ],
+   "x_serialization_backend" : "JSON::PP version 4.16",
+   "x_static_install" : 1
 }

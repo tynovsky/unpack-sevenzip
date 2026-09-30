@@ -254,9 +254,11 @@ __END__
 
 =encoding utf-8
 
+=for stopwords rar xz iso sevenzip stdin
+
 =head1 NAME
 
-Unpack::SevenZip - p7zip wrapper
+Unpack::SevenZip - list and extract archives with 7-Zip, into memory
 
 =head1 SYNOPSIS
 
@@ -266,54 +268,153 @@ Unpack::SevenZip - p7zip wrapper
 
     my ($files, $info) = $unpacker->info('archive.7z');
     # $files: [ { path => 'a.txt', size => 42 }, ... ]
+    # $info:  { type => '7z', method => 'LZMA2:24', solid => '+', ... }
 
     my ($extracted, $corrupted, $unsaved) = $unpacker->extract(
         'archive.7z',
         sub {
             my ($contents, $file) = @_;
-            # save $contents of $file->{path} somewhere
-            return $saved_name;
+            # do something with the content of $file->{path}
+            return $file->{path};
         },
         ['-pPASSWORD'],
     );
 
 =head1 DESCRIPTION
 
-Unpack::SevenZip is a wrapper over p7zip tool. It allows you to define
-a function for saving extracted files. The archive gets extracted and the user-defined
-function (which gets the file data blob and the filename) is called for each
-file extracted from the archive.
+Unpack::SevenZip runs the 7-Zip command line program and extracts archives
+of any format it can read (zip, 7z, rar, tar, gzip, bzip2, xz, iso, cab,
+...) into memory: for each file in the archive a callback gets the content
+of the file. Nothing is written to the disk.
 
-7z is executed directly (without a shell), so archive names and switches
-may contain any characters. Array references passed to the methods are
-never modified.
+It works by running C<7z x -so>, which writes the contents of all the files
+to its standard output, one after another, and splitting the output into
+files by their sizes from the list of files in the archive (C<7z l>).
+
+7-Zip is executed directly (without a shell), so archive names and
+switches may contain any characters. ARRAY references passed to the
+methods are never modified. Nothing is printed to STDOUT.
+
+L<Unpack::Custom> builds on this module and lets you define what happens
+before, during and after extracting, including recursive extraction.
 
 =head1 METHODS
 
 =head2 new(\%args)
 
-Dies if C<sevenzip> (default C<7z>) is not a 7-Zip binary. Set C<verbose>
-to get warnings about files which were listed but not extracted.
+Arguments (all optional):
+
+=over
+
+=item sevenzip
+
+Path to the 7-Zip binary (default C<7z>).
+
+=item verbose
+
+Warn about files which were listed but not extracted.
+
+=back
+
+Dies if C<sevenzip> can't be run or is not 7-Zip.
 
 =head2 info($archive, \@switches)
 
-Returns an ARRAY reference of the files in the archive (hashes with keys
-C<path>, C<size> and C<folder>; C<size> is missing when it is unknown) and
-a HASH reference with information about the archive.
+Lists the archive. Returns
+
+=over
+
+=item *
+
+an ARRAY reference of the files in the archive, in the order they are
+stored: HASH references with the keys C<path>, C<size> (missing when 7-Zip
+does not know it, e.g. for C<bzip2>) and C<folder> (C<+> for directories, if
+the format has it). A file without a name (e.g. in C<bzip2>) gets the name of
+the archive without its extension, as with C<7z x>.
+
+=item *
+
+a HASH reference with information about the archive (C<type>, C<method>,
+C<solid>, C<physical size>, ...; the lowercased keys printed by
+C<7z l -slt>), undefined when the file is not an archive.
+
+=back
+
+The list is empty when the file is not an archive 7-Zip can open (or it
+has encrypted headers and no or a wrong password was given). Pass a
+password switch, e.g. C<['-pPASSWORD']>, to list archives with encrypted
+headers.
 
 =head2 extract($archive, $save, \@switches, $list, \@passwords)
 
-Calls C<< $save->($contents, $file) >> for each extracted file, where
-C<$file> is an item of C<$list> (by default the result of C<info>). All
-passwords (from C<\@passwords> and C<-p> switches, and the empty password)
-are tried until something is extracted. Returns ARRAY references of the
-values returned by C<$save>, of the paths of corrupted files and of the
-files from C<$list> which were not extracted. The exit code of 7z is
-stored in C<< $unpacker->{last_exit_code} >>.
+Extracts the archive and calls C<< $save->($contents, $file) >> for each
+file in it (directories are skipped). C<$contents> is the whole content of
+the file as a byte string, C<$file> is an item of C<$list>.
+
+=over
+
+=item \@switches
+
+Additional 7-Zip switches, e.g. C<['-x!*.log']>. C<-p> switches are used
+as passwords.
+
+=item $list
+
+The files 7-Zip extracts, as returned by C<info> (the default, so the
+archive is listed first). It must contain exactly the files 7-Zip
+extracts, in the same order, otherwise the output is split incorrectly:
+when you exclude files by switches, remove them from the list too.
+
+=item \@passwords
+
+Passwords to try. The passwords from the C<-p> switches and the empty
+password are tried too, in this order, until something is extracted.
+
+=back
+
+Returns three ARRAY references:
+
+=over
+
+=item *
+
+the values returned by C<$save>,
+
+=item *
+
+the paths of the files 7-Zip reported as corrupted (CRC error, data error,
+wrong password, ...) or whose content was cut off; their (possibly damaged)
+content may have been passed to C<$save>,
+
+=item *
+
+the items of C<$list> which were not extracted.
+
+=back
+
+The exit code of 7-Zip is stored in C<< $unpacker->{last_exit_code} >>
+(also by C<info>).
 
 =head2 run_7zip($command, $archive, \@switches, \@files)
 
-Starts 7z and returns its pid and its stdout, stderr and stdin handles.
+Starts 7-Zip with the given command (e.g. C<l>, C<x>) and returns its pid
+and its stdout, stderr and stdin handles; used by C<info> and C<extract>.
+Read both output handles and call C<waitpid> on the pid.
+
+=head1 REQUIREMENTS
+
+The 7-Zip command line program C<7z>, e.g. the C<7zip> package (or the
+older C<p7zip-full>) on Debian and Ubuntu; RAR archives need the C<7zip-rar>
+package there. Both 7-Zip 15 and newer and the older p7zip are supported.
+
+=head1 LIMITATIONS
+
+Each extracted file is kept in memory until it is passed to C<$save>, so
+the largest file in an archive has to fit into memory.
+
+=head1 SEE ALSO
+
+L<Unpack::Custom>
 
 =head1 LICENSE
 
